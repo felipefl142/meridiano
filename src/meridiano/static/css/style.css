@@ -764,12 +764,40 @@ blockquote {
     text-decoration: none;
 }
 
-/* Page size selector, sitting at the right end of the sort controls */
+/* Page size selector, sitting at the right end of the list it belongs to */
 .per-page-control {
-    float: right;
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    font-size: 0.9em;
+    color: #6c757d;
+}
+
+.sort-controls .per-page-control {
+    float: right;
+    font-size: 1em;
+}
+
+/* Header row pairing a list heading with its page size selector */
+.list-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.list-controls h3 {
+    margin: 0;
+}
+
+.per-page-form {
+    margin: 0;
+}
+
+.list-summary {
+    color: #6c757d;
+    font-size: 0.9em;
 }
 
 .per-page-control label {
@@ -1256,7 +1284,9 @@ html[data-theme="dark"] .per-page-control select {
     color: #e4e6eb;
     border-color: #495057;
 }
-html[data-theme="dark"] .per-page-control label { color: #9aa0a6; }
+html[data-theme="dark"] .per-page-control,
+html[data-theme="dark"] .per-page-control label,
+html[data-theme="dark"] .list-summary { color: #9aa0a6; }
 html[data-theme="dark"] .search-filter input[type="search"] { color: #e4e6eb; }
 
 html[data-theme="dark"] .article-details dd { border-left-color: #343a40; }
