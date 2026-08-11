@@ -30,6 +30,28 @@ ARTICLE_SORT_FIELDS = {
 }
 
 
+# Page sizes offered in the articles list dropdown.
+ARTICLES_PER_PAGE_CHOICES = (10, 15, 25, 50, 100)
+
+
+def _parse_per_page(per_page_arg):
+    """
+    Returns the page size to use and the choices to offer in the dropdown.
+
+    The configured default is always part of the choices, even when it is not one
+    of the presets, and anything outside them falls back to that default.
+    """
+    default = getattr(config, "ARTICLES_PER_PAGE", 25)
+    options = sorted({*ARTICLES_PER_PAGE_CHOICES, default})
+    try:
+        per_page = int(per_page_arg)
+    except (TypeError, ValueError):
+        return default, options
+    if per_page not in options:
+        return default, options
+    return per_page, options
+
+
 def _parse_sort_args(sort_by_args, direction_args):
     """
     Normalises the repeated sort_by/direction query params into two aligned lists.
@@ -151,7 +173,9 @@ def list_articles():
     except ValueError:
         page = 1
     page = max(1, page)
-    per_page = getattr(config, "ARTICLES_PER_PAGE", 25)
+    per_page, per_page_options = _parse_per_page(request.args.get("per_page"))
+    # Links only carry the page size when it differs from the default, keeping URLs tidy.
+    per_page_param = per_page if per_page != getattr(config, "ARTICLES_PER_PAGE", 25) else None
 
     # --- Sorting (multi-key: fields are applied in the order they appear) ---
     sort_by, direction = _parse_sort_args(request.args.getlist("sort_by"), request.args.getlist("direction"))
@@ -253,6 +277,8 @@ def list_articles():
         page=page,
         total_pages=total_pages,
         per_page=per_page,
+        per_page_options=per_page_options,
+        per_page_param=per_page_param,
         total_articles=total_articles,  # Filtered total
         current_sort_by=sort_by,
         current_direction=direction,
