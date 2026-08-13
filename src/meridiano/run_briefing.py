@@ -18,7 +18,7 @@ from sqlmodel import select
 from meridiano import config_base as config  # Load base config first
 from meridiano import database
 from meridiano.models import Article, get_session
-from meridiano.utils import fetch_article_content_and_og_image
+from meridiano.utils import fetch_article_content_and_og_image, html_fragment_to_text
 
 # --- Setup ---
 load_dotenv()
@@ -173,6 +173,28 @@ def build_article_links(clusters):
 
 # --- Core Functions ---
 
+# Below this, a feed excerpt is a teaser rather than something worth summarizing.
+MIN_FEED_CONTENT_LENGTH = 200
+
+
+def feed_entry_content(entry):
+    """Best available article text carried by the RSS entry itself.
+
+    Used when scraping the page is blocked. ``content`` holds the syndicated body
+    where a feed provides one; ``summary`` is usually a one-line teaser, so it is
+    only accepted when it is substantial enough to summarize.
+    """
+    blocks = entry.get("content") or []
+    for block in blocks:
+        text = html_fragment_to_text(block.get("value"))
+        if text and len(text) >= MIN_FEED_CONTENT_LENGTH:
+            return text
+
+    summary = html_fragment_to_text(entry.get("summary"))
+    if summary and len(summary) >= MIN_FEED_CONTENT_LENGTH:
+        return summary
+    return None
+
 
 def scrape_articles(feed_profile, rss_feeds):  # Added params
     """Scrapes articles for a specific feed profile."""
@@ -239,6 +261,13 @@ def scrape_articles(feed_profile, rss_feeds):  # Added params
             raw_content = fetch_result["content"]
             og_image_url = fetch_result["og_image"]
             # --- End Fetch ---
+
+            if not raw_content:
+                # Sites behind a bot wall still syndicate a usable excerpt, so fall
+                # back to the feed rather than dropping the article outright.
+                raw_content = feed_entry_content(entry)
+                if raw_content:
+                    print(f"  Using feed content, scraping was blocked: {title}")
 
             if not raw_content:
                 print(f"  Skipping article, failed to extract main content: {title}")

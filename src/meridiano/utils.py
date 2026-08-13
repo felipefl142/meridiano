@@ -13,6 +13,37 @@ logging.basicConfig(
 logger = logging.getLogger()
 
 
+# Bot walls answer with a challenge page instead of the article. Ars Technica's
+# serves HTTP 202 with "JavaScript is disabled ... verify that you're not a robot",
+# which requests treats as success and trafilatura happily extracts, so the
+# interstitial ends up stored as the article body. These phrases are only trusted
+# as a rejection on a short extraction -- a real article may well discuss them.
+CHALLENGE_MARKERS = (
+    "javascript is disabled",
+    "not a robot",
+    "enable javascript",
+    "checking your browser",
+    "just a moment",
+)
+CHALLENGE_MAX_LENGTH = 600
+
+
+def looks_like_bot_challenge(text):
+    """True when an extraction looks like a bot wall rather than an article."""
+    if not text or len(text) > CHALLENGE_MAX_LENGTH:
+        return False
+    lowered = text.lower()
+    return any(marker in lowered for marker in CHALLENGE_MARKERS)
+
+
+def html_fragment_to_text(html):
+    """Flattens an HTML fragment (e.g. an RSS content block) to plain text."""
+    if not html:
+        return None
+    text = BeautifulSoup(html, "lxml").get_text(separator="\n", strip=True)
+    return text or None
+
+
 # Helper function for date formatting (optional but nice)
 def format_datetime(value, format="%Y-%m-%d %H:%M"):
     if value is None:
@@ -54,10 +85,22 @@ def fetch_article_content_and_og_image(url):
         }
         response = requests.get(url, headers=headers, timeout=20)  # Increased timeout slightly
         response.raise_for_status()
+
+        # raise_for_status only covers 4xx/5xx. A bot wall can answer 2xx-but-not-200
+        # (Ars Technica uses 202) with a challenge page, which would otherwise be
+        # extracted and stored as the article.
+        if response.status_code != 200:
+            print(f"Not article content, got HTTP {response.status_code} for {url}")
+            return {"content": None, "og_image": None}
+
         html_content = response.text
 
         # 1. Extract text content
         content = trafilatura.extract(html_content, include_comments=False, include_tables=False)
+
+        if looks_like_bot_challenge(content):
+            print(f"Bot challenge page instead of article content: {url}")
+            return {"content": None, "og_image": None}
 
         # 2. Extract og:image using BeautifulSoup
         soup = BeautifulSoup(html_content, "lxml")  # Use lxml or html.parser

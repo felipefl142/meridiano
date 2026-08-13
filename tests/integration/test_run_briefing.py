@@ -488,3 +488,72 @@ def test_generate_brief_records_its_sources(setup_integration):
     assert "TOPIC:" not in database.get_brief_by_id(brief["id"])["brief_markdown"]
     assert all(link["cluster_topic"] == "Seeded Topic" for link in links)
     assert len(links) == len({link["article_id"] for link in links})
+
+
+class TestFeedEntryContent:
+    """Feeds still syndicate an excerpt when the page itself is walled off."""
+
+    def test_prefers_the_syndicated_body(self):
+        """Test that the content block wins over the teaser summary."""
+        body = "<p>" + ("The syndicated article body. " * 12) + "</p>"
+        entry = {"content": [{"value": body}], "summary": "A one-line teaser."}
+
+        result = run_briefing.feed_entry_content(entry)
+
+        assert result is not None
+        assert "syndicated article body" in result
+        assert "<p>" not in result, "HTML should be flattened to text"
+
+    def test_falls_back_to_a_substantial_summary(self):
+        """Test that a feed carrying only a long summary is still usable."""
+        entry = {"summary": "<p>" + ("A long summary standing in for the body. " * 8) + "</p>"}
+
+        result = run_briefing.feed_entry_content(entry)
+
+        assert result is not None
+        assert "long summary standing in" in result
+
+    def test_rejects_a_teaser_summary(self):
+        """Test that a one-line teaser is not worth summarizing."""
+        entry = {"summary": "Pricing hasn't changed."}
+
+        assert run_briefing.feed_entry_content(entry) is None
+
+    def test_rejects_a_short_content_block(self):
+        """Test that a stub content block does not beat having nothing."""
+        entry = {"content": [{"value": "<p>Read more.</p>"}]}
+
+        assert run_briefing.feed_entry_content(entry) is None
+
+    def test_entry_without_any_body(self):
+        """Test that a bare entry yields nothing rather than raising."""
+        assert run_briefing.feed_entry_content({}) is None
+
+
+@patch("meridiano.run_briefing.feedparser.parse")
+@patch("meridiano.run_briefing.fetch_article_content_and_og_image")
+def test_walled_article_is_saved_from_the_feed(mock_fetch, mock_parse, setup_integration):
+    """An article behind a bot wall is stored from the feed instead of being dropped."""
+    body = "<p>" + ("Real reporting that the bot wall hid. " * 10) + "</p>"
+    mock_parse.return_value = MagicMock(
+        bozo=False,
+        entries=[
+            {
+                "link": "https://arstechnica.com/walled-story/",
+                "title": "Walled Story",
+                "published_parsed": (2026, 8, 13, 10, 0, 0, 0, 0, 0),
+                "content": [{"value": body}],
+                "summary": "Teaser.",
+            }
+        ],
+        feed={"title": "Ars Technica"},
+    )
+    # What the bot wall now produces: no content at all.
+    mock_fetch.return_value = {"content": None, "og_image": None}
+
+    run_briefing.scrape_articles("test", ["https://arstechnica.com/feed/"])
+
+    articles = database.get_all_articles()
+    assert len(articles) == 1, "the article should be kept, not skipped"
+    assert "Real reporting that the bot wall hid" in articles[0]["raw_content"]
+    assert "not a robot" not in articles[0]["raw_content"]
