@@ -112,6 +112,13 @@ document.addEventListener('DOMContentLoaded', function() {
         if (startDateEl.value || endDateEl.value) {
             toggleDateFilters();
         }
+        // Typing a date replaces the active preset, otherwise the preset wins on submit
+        const presetEl = document.getElementById('preset');
+        [startDateEl, endDateEl].forEach(function(el) {
+            el.addEventListener('change', function() {
+                if (presetEl) presetEl.value = '';
+            });
+        });
     }
 
     // Open the impact filter panel when an impact score filter is active

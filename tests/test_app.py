@@ -142,6 +142,17 @@ class TestArticlesRoute:
         response = client.get("/articles?impact_op=gt&impact_score=42")
         assert response.status_code == 200
 
+    def test_articles_form_has_single_date_inputs(self, client):
+        """The form must not repeat start_date/end_date, or the typed dates get ignored.
+
+        Browsers submit every field in document order and Flask reads the first value,
+        so a hidden copy ahead of the visible date inputs would always win.
+        """
+        response = client.get("/articles?start_date=2024-01-01&end_date=2024-01-31")
+        assert response.status_code == 200
+        assert response.data.count(b'name="start_date"') == 1
+        assert response.data.count(b'name="end_date"') == 1
+
     def test_articles_route_with_multiple_sort_keys(self, client):
         """Test articles route accepts repeated sort_by/direction params."""
         response = client.get("/articles?sort_by=impact_score&direction=desc&sort_by=published_date&direction=asc")
