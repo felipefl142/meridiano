@@ -29,9 +29,8 @@
                     <input type="hidden" name="sort_by" value="{{ field }}">
                     <input type="hidden" name="direction" value="{{ current_direction[loop.index0] }}">
                 {% endfor %}
-                <input type="hidden" name="start_date" value="{{ current_start_date }}">
-                <input type="hidden" name="end_date" value="{{ current_end_date }}">
-                <input type="hidden" name="preset" value="{{ current_preset }}">
+                {# start_date/end_date come from the visible inputs in the date panel #}
+                <input type="hidden" name="preset" id="preset" value="{{ current_preset }}">
                 <div class="form-row form-section">
                     <div class="profile-filter">
                         <span class="profile-filter-label">Profiles:</span>
