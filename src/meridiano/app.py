@@ -166,6 +166,25 @@ def view_brief(brief_id):
     )
 
 
+IMPACT_SCORE_OPTIONS = ["-"] + [str(n) for n in range(1, 11)]
+
+
+def _parse_impact_filter(op_param: str, score_param: str):
+    """Parses the impact score filter query params.
+
+    Returns ``(op_param, score_param, impact_op, impact_value)``: the first two
+    are the sanitised values to echo back into the template (empty strings when
+    invalid), the last two are what the database filter expects. A score of
+    ``"-"`` selects articles without an impact score, whatever the operator.
+    """
+    op_param = op_param if op_param in ("gt", "lt", "eq") else "gt"
+    if score_param not in IMPACT_SCORE_OPTIONS:
+        return op_param, "", None, None
+    if score_param == "-":
+        return op_param, score_param, "none", None
+    return op_param, score_param, op_param, int(score_param)
+
+
 @app.route("/articles")
 def list_articles():
     """Displays a paginated list of stored articles with search, sorting and date filtering."""
@@ -234,12 +253,19 @@ def list_articles():
     # Search Term Filter
     current_search_term = request.args.get("search", "").strip()  # Get search term, trim whitespace
 
+    # Impact Score Filter: "more than" / "less than" / "equals" an integer 1-10, or "-" for unscored
+    impact_op_param, impact_score_param, impact_op, impact_value = _parse_impact_filter(
+        request.args.get("impact_op", ""), request.args.get("impact_score", "")
+    )
+
     # Fetch total count with ALL filters
     total_articles = database.get_total_article_count(
         start_date=start_date,
         end_date=end_date,
         feed_profile=current_feed_profiles if current_feed_profiles else None,
         search_term=current_search_term if current_search_term else None,
+        impact_op=impact_op,
+        impact_value=impact_value,
     )
 
     # Fetch articles with ALL filters and sorting
@@ -252,6 +278,8 @@ def list_articles():
         end_date=end_date,
         feed_profile=current_feed_profiles if current_feed_profiles else None,
         search_term=current_search_term if current_search_term else None,
+        impact_op=impact_op,
+        impact_value=impact_value,
     )
 
     articles_data = process_artciles_content(articles_data)
@@ -289,6 +317,9 @@ def list_articles():
         available_profiles=available_profiles,
         current_feed_profiles=current_feed_profiles,
         current_search_term=current_search_term,
+        current_impact_op=impact_op_param,
+        current_impact_score=impact_score_param,
+        impact_score_options=IMPACT_SCORE_OPTIONS,
     )
 
 
