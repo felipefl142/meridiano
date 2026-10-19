@@ -4,6 +4,7 @@ Tests for Flask application routes.
 
 import os
 import sys
+from datetime import datetime
 from unittest.mock import patch
 
 import pytest
@@ -103,6 +104,49 @@ class TestArticlesRoute:
     def test_articles_route_with_date_filter(self, client):
         """Test articles route with date filters."""
         response = client.get("/articles?start_date=2024-01-01&end_date=2024-01-31")
+        assert response.status_code == 200
+
+    def test_articles_route_with_impact_filter(self, client):
+        """Impact filter narrows results and is carried into the page links."""
+        add_article(
+            url="https://example.com/high",
+            title="High Impact Story",
+            published_date=datetime(2024, 1, 1),
+            feed_source="Test Feed",
+            raw_content="content",
+            feed_profile="tech",
+        )
+        add_article(
+            url="https://example.com/none",
+            title="Unscored Story",
+            published_date=datetime(2024, 1, 1),
+            feed_source="Test Feed",
+            raw_content="content",
+            feed_profile="tech",
+        )
+        from meridiano.database import update_article_rating
+
+        update_article_rating(1, 8)
+
+        response = client.get("/articles?impact_op=gt&impact_score=5")
+        assert response.status_code == 200
+        assert b"High Impact Story" in response.data
+        assert b"Unscored Story" not in response.data
+        assert b"impact_op=gt&amp;impact_score=5" in response.data
+
+        response = client.get("/articles?impact_op=lt&impact_score=-")
+        assert b"Unscored Story" in response.data
+        assert b"High Impact Story" not in response.data
+
+    def test_articles_route_impact_equals_is_selected(self, client):
+        """The 'equals to' operator is accepted and pre-selected in the form."""
+        response = client.get("/articles?impact_op=eq&impact_score=7")
+        assert response.status_code == 200
+        assert b'value="eq" selected' in response.data
+
+    def test_articles_route_ignores_invalid_impact_score(self, client):
+        """An out-of-range impact score is ignored rather than erroring."""
+        response = client.get("/articles?impact_op=gt&impact_score=42")
         assert response.status_code == 200
 
     def test_articles_route_with_multiple_sort_keys(self, client):

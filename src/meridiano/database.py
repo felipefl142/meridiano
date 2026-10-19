@@ -195,11 +195,17 @@ def _build_article_filters(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     feed_profile: Optional[Union[str, List[str]]] = None,
+    impact_op: Optional[str] = None,
+    impact_value: Optional[int] = None,
 ):
     """Helper for building filter conditions for articles.
 
     ``feed_profile`` may be a single profile name or a list of names
     (multi-select). A list filters with ``IN``; a string filters with ``==``.
+
+    ``impact_op`` is ``"gt"`` / ``"lt"`` / ``"eq"`` (strictly more than, strictly
+    less than, or equal to ``impact_value``) or ``"none"`` for articles without
+    an impact score.
     """
     filters = []
 
@@ -212,6 +218,14 @@ def _build_article_filters(
             filters.append(Article.feed_profile.in_(list(feed_profile)))
         else:
             filters.append(Article.feed_profile == feed_profile)
+    if impact_op == "none":
+        filters.append(Article.impact_score.is_(None))
+    elif impact_op == "gt" and impact_value is not None:
+        filters.append(Article.impact_score > impact_value)
+    elif impact_op == "lt" and impact_value is not None:
+        filters.append(Article.impact_score < impact_value)
+    elif impact_op == "eq" and impact_value is not None:
+        filters.append(Article.impact_score == impact_value)
 
     return filters
 
@@ -225,6 +239,8 @@ def get_all_articles(
     end_date: Optional[date] = None,
     feed_profile: Optional[Union[str, List[str]]] = None,
     search_term: Optional[str] = None,
+    impact_op: Optional[str] = None,
+    impact_value: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """
     Fetches articles with filtering, sorting, and full-text search.
@@ -235,7 +251,7 @@ def get_all_articles(
         statement = select(Article)
 
         # Apply basic filters
-        filters = _build_article_filters(start_date, end_date, feed_profile)
+        filters = _build_article_filters(start_date, end_date, feed_profile, impact_op, impact_value)
         if filters:
             statement = statement.where(and_(*filters))
 
@@ -274,6 +290,8 @@ def get_total_article_count(
     end_date: Optional[date] = None,
     feed_profile: Optional[Union[str, List[str]]] = None,
     search_term: Optional[str] = None,
+    impact_op: Optional[str] = None,
+    impact_value: Optional[int] = None,
 ) -> int:
     """Returns total count of articles with optional filtering and search."""
     with get_session() as session:
@@ -281,7 +299,7 @@ def get_total_article_count(
         statement = select(func.count(Article.id))
 
         # Apply basic filters
-        filters = _build_article_filters(start_date, end_date, feed_profile)
+        filters = _build_article_filters(start_date, end_date, feed_profile, impact_op, impact_value)
         if filters:
             statement = statement.where(and_(*filters))
 

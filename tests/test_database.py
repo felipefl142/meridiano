@@ -33,6 +33,7 @@ from meridiano.database import (
     get_collection_by_id,
     get_collections,
     get_distinct_feed_profiles,
+    get_total_article_count,
     remove_article_from_collection,
     save_brief,
     toggle_collection_archive_status,
@@ -180,6 +181,53 @@ class TestGetAllArticlesSorting:
         """An unknown sort field is ignored, leaving the default ordering."""
         titles = [a["title"] for a in get_all_articles(sort_by="bogus_column", direction="desc")]
         assert titles == ["newer-low", "newer-high", "older-high"]
+
+
+class TestImpactScoreFilter:
+    """Tests for filtering articles by impact score."""
+
+    @pytest.fixture
+    def scored_articles(self):
+        """Creates articles with impact scores 2, 5, 9 and one unscored."""
+        from datetime import datetime
+
+        from meridiano.models import Article
+
+        with get_session() as session:
+            for title, score in [("low", 2), ("mid", 5), ("high", 9), ("unscored", None)]:
+                session.add(
+                    Article(
+                        url=f"https://example.com/{title}",
+                        title=title,
+                        published_date=datetime(2024, 1, 1),
+                        feed_source="Test Feed",
+                        raw_content="content",
+                        feed_profile="tech",
+                        impact_score=score,
+                    )
+                )
+            session.commit()
+
+    def _titles(self, **kwargs):
+        return sorted(a["title"] for a in get_all_articles(**kwargs))
+
+    def test_more_than_is_strict(self, scored_articles):
+        assert self._titles(impact_op="gt", impact_value=5) == ["high"]
+
+    def test_less_than_is_strict(self, scored_articles):
+        assert self._titles(impact_op="lt", impact_value=5) == ["low"]
+
+    def test_equals(self, scored_articles):
+        assert self._titles(impact_op="eq", impact_value=5) == ["mid"]
+
+    def test_no_score(self, scored_articles):
+        assert self._titles(impact_op="none") == ["unscored"]
+
+    def test_no_filter_returns_all(self, scored_articles):
+        assert len(self._titles()) == 4
+
+    def test_count_respects_filter(self, scored_articles):
+        assert get_total_article_count(impact_op="gt", impact_value=1) == 3
 
 
 class TestFeedProfiles:
