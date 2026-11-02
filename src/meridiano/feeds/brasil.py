@@ -13,6 +13,7 @@ RSS_FEEDS = [
     "https://averdade.org.br/feed/",  # Jornal A Verdade
     "https://revistaforum.com.br/rss/feed.html",  # Revista Fórum
     "https://operamundi.uol.com.br/feed/",  # Opera Mundi
+    "https://www.metropoles.com/feed"  # Portal Metrópoles
 ]
 
 pt_br = " Responda em português brasileiro."
