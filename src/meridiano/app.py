@@ -12,13 +12,19 @@ from sqlmodel import select
 
 from meridiano import config_base as config  # Use base config for app settings
 from meridiano import database  # Import our database functions
-from meridiano.utils import fetch_article_content_and_og_image, format_datetime, scrape_single_article_details
+from meridiano.utils import (
+    fetch_article_content_and_og_image,
+    format_datetime,
+    looks_truncated,
+    scrape_single_article_details,
+)
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "a_default_secret_key_for_development_only")
 
 # Register the filter with Jinja
 app.jinja_env.filters["datetimeformat"] = format_datetime
+app.jinja_env.filters["looks_truncated"] = looks_truncated
 
 
 # Sortable article fields and their labels, in the order shown in the UI.
@@ -403,7 +409,9 @@ def fetch_article_full_content(article_id):
 
     result = fetch_article_content_and_og_image(article["url"])
     full_html = result.get("full_html")
-    database.update_article_full_content(article_id, full_html, raw_content=result.get("content"))
+    database.update_article_full_content(
+        article_id, full_html, raw_content=result.get("content"), paywalled=result.get("paywalled")
+    )
     if full_html:
         flash("Full article fetched.", "success")
     else:
@@ -467,6 +475,7 @@ def add_manual_article():
                 feed_profile=feed_profile_to_assign,
                 image_url=final_image_url,
                 full_content_html=scraped_details.get("full_content_html"),
+                full_content_paywalled=scraped_details.get("full_content_paywalled"),
             )
             if article_id:
                 if final_raw_content:

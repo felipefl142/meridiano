@@ -12,11 +12,13 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 
 from meridiano.utils import (
     decode_html_response,
+    detect_paywall,
     extract_full_article_html,
     fetch_article_content_and_og_image,
     format_datetime,
     html_fragment_to_text,
     looks_like_bot_challenge,
+    looks_truncated,
     repair_mojibake,
     sanitize_article_html,
     simplify_figures,
@@ -131,7 +133,7 @@ class TestFetchArticleContentAndOgImage:
         with patch("meridiano.utils.requests.get", return_value=self._response(202, html)):
             result = fetch_article_content_and_og_image("https://arstechnica.com/some-article/")
 
-        assert result == {"content": None, "og_image": None, "full_html": None}
+        assert result == {"content": None, "og_image": None, "full_html": None, "paywalled": False}
 
     def test_rejects_a_challenge_served_as_200(self):
         """Test that a wall which answers 200 is still caught by the wording."""
@@ -273,7 +275,7 @@ class TestSimplifyFigures:
             '<div class="widget-image"><figure><div class="ratio">'
             '<img class="c-lazyload" data-src="https://cdn.example.com/foto_md.jpg" alt="Foto">'
             '<noscript><img src="https://cdn.example.com/foto_md.jpg"></noscript>'
-            '</div><figcaption>Legenda <span>Crédito</span></figcaption></figure></div>'
+            "</div><figcaption>Legenda <span>Crédito</span></figcaption></figure></div>"
             f"<p>{body}</p></article></body></html>"
         )
         assert 'class="widget-image"' not in simplify_figures(html)
@@ -282,3 +284,66 @@ class TestSimplifyFigures:
         assert result.count("<img") == 1
         assert 'src="https://cdn.example.com/foto_md.jpg"' in result
         assert "Legenda Crédito" in result
+
+
+class TestDetectPaywall:
+    def test_json_ld_boolean_false(self):
+        html = (
+            '<html><head><script type="application/ld+json">'
+            '{"@type": "NewsArticle", "isAccessibleForFree": false}</script></head></html>'
+        )
+        assert detect_paywall(html) is True
+
+    def test_json_ld_nested_in_has_part_and_graph(self):
+        html = (
+            '<html><head><script type="application/ld+json">'
+            '{"@graph": [{"@type": "NewsArticle", "hasPart": {"@type": "WebPageElement",'
+            ' "isAccessibleForFree": "https://schema.org/False", "cssSelector": ".paywall"}}]}'
+            "</script></head></html>"
+        )
+        assert detect_paywall(html) is True
+
+    def test_microdata_meta(self):
+        html = (
+            '<html><body><span itemprop="hasPart">'
+            '<meta itemprop="isAccessibleForFree" content="false"></span></body></html>'
+        )
+        assert detect_paywall(html) is True
+
+    def test_free_or_unmarked_pages(self):
+        free = '<html><head><script type="application/ld+json">{"isAccessibleForFree": true}</script></head></html>'
+        broken = '<html><head><script type="application/ld+json">{not json</script></head></html>'
+        assert detect_paywall(free) is False
+        assert detect_paywall(broken) is False
+        assert detect_paywall("<html><body><p>paywall talk</p></body></html>") is False
+        assert detect_paywall(None) is False
+
+    def test_fetch_reports_paywall(self):
+        html = (
+            '<html><head><script type="application/ld+json">{"isAccessibleForFree": "False"}</script></head>'
+            "<body><article><p>" + "Long paragraph of real article text. " * 20 + "</p></article></body></html>"
+        )
+        response = MagicMock(status_code=200, text=html, content=html.encode())
+        response.headers = {"Content-Type": "text/html; charset=utf-8"}
+        with patch("meridiano.utils.requests.get", return_value=response):
+            result = fetch_article_content_and_og_image("https://example.com/paid")
+        assert result["full_html"]
+        assert result["paywalled"] is True
+
+
+class TestLooksTruncated:
+    def test_paragraph_cut_mid_sentence(self):
+        assert looks_truncated("<p>First.</p><p>It was presented at a</p>") is True
+
+    def test_complete_endings(self):
+        assert looks_truncated("<p>Done.</p>") is False
+        assert looks_truncated('<p>"Quote ends here."</p>') is False
+        assert looks_truncated("<p>Is it?</p><p>   </p>") is False
+
+    def test_trailing_list_or_table_is_not_judged(self):
+        assert looks_truncated("<p>Schedule:</p><ul><li>Band: 19h30</li></ul>") is False
+        assert looks_truncated("<p>Prices</p><table><tr><td>10</td></tr></table>") is False
+
+    def test_empty(self):
+        assert looks_truncated(None) is False
+        assert looks_truncated("") is False
