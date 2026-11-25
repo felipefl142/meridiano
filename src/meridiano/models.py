@@ -5,7 +5,7 @@ SQLModel database models for Meridiano application.
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import inspect
+from sqlalchemy import event, inspect
 from sqlmodel import Field, Session, SQLModel, create_engine, text
 
 from . import config_base as config
@@ -122,7 +122,24 @@ class Collection(SQLModel, table=True):
 
 
 # Database engine and session management
-engine = create_engine(config.DATABASE_URL, echo=False)
+_IS_SQLITE = config.DATABASE_URL.lower().startswith("sqlite")
+
+# Several feeds may run in parallel against one SQLite file: wait up to 60s for a
+# lock instead of failing with "database is locked".
+engine = create_engine(
+    config.DATABASE_URL,
+    echo=False,
+    connect_args={"timeout": 60} if _IS_SQLITE else {},
+)
+
+if _IS_SQLITE:
+
+    @event.listens_for(engine, "connect")
+    def _sqlite_pragmas(dbapi_connection, _connection_record):
+        # WAL lets readers (the web app) keep working while a feed writes.
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.close()
 
 
 # Columns added to existing tables after release: (table, column, PostgreSQL type, SQLite type).
