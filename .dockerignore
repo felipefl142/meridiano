@@ -10,3 +10,7 @@ htmlcov
 dist
 build
 meridian.db
+meridian.db*
+data
+*.tar.gz
+tests

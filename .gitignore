@@ -23,3 +23,6 @@ Thumbs.db
 src/meridiano.egg-info/
 
 .coverage
+
+# Docker SQLite data dir
+data/

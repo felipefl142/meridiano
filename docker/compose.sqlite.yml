@@ -1,0 +1,27 @@
+# Single-container deployment using SQLite (no Postgres).
+# The database lives on the host in ../data/meridian.db.
+#
+#   docker compose -f docker/compose.sqlite.yml up -d --build
+#   docker compose -f docker/compose.sqlite.yml exec web \
+#       .venv/bin/python -m meridiano.run_briefing --feed default --all
+services:
+  web:
+    build:
+      context: ../
+      dockerfile: ./docker/Dockerfile
+    image: meridiano:latest
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: sqlite:////data/meridian.db
+    volumes:
+      - ../data:/data
+    ports:
+      - "5000:5000"
+    command:
+      - .venv/bin/gunicorn
+      - --bind=0.0.0.0:5000
+      - --workers=2
+      - --timeout=120
+      - meridiano.app:app
+    restart: unless-stopped
